@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工作组 - 验证码验证</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入腾讯云开发 SDK（国内CDN，无需科学上网） -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/cloudbase-js-sdk/1.7.0/cloudbase.full.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -37,7 +39,7 @@
     <div id="verifySection" class="container mx-auto px-4 py-8">
         <div class="verify-container">
             <div class="text-center mb-6">
-                <i class="fa fa-lock text-4xl text-primary mb-3"></i>
+                <<i class="fa fa-lock text-4xl text-primary mb-3"></</i>
                 <h2 class="text-2xl font-bold text-gray-800">请输入四位验证码</h2>
                 <p class="text-secondary mt-2">相同验证码的用户共享记录<br>第一个输入者为管理员（可删除记录）</p>
             </div>
@@ -52,7 +54,7 @@
                     placeholder="1234">
                 <div id="verifyError" class="text-red-500 text-sm hidden text-center">请输入有效的四位数字验证码</div>
                 <button id="verifyBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <i class="fa fa-unlock-alt"></i>
+                    <<i class="fa fa-unlock-alt"></</i>
                     <span>验证并进入</span>
                 </button>
             </div>
@@ -67,17 +69,17 @@
                 <p class="text-secondary">
                     当前分组：<span id="currentCode" class="font-medium text-primary"></span>
                     <span id="adminTag" class="ml-2 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full hidden">
-                        <i class="fa fa-shield mr-1"></i>管理员
+                        <<i class="fa fa-shield mr-1"></</i>管理员
                     </span>
                 </p>
             </div>
             <div class="flex gap-3">
                 <button id="clearAllBtn" class="hidden bg-danger hover:bg-danger/90 text-white py-2 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-1 shadow-md hover:shadow-lg">
-                    <i class="fa fa-trash"></i>
+                    <<i class="fa fa-trash"></</i>
                     <span>清空全部</span>
                 </button>
                 <button id="logoutBtn" class="text-sm text-gray-600 hover:text-primary flex items-center gap-1">
-                    <i class="fa fa-sign-out"></i>
+                    <<i class="fa fa-sign-out"></</i>
                     <span>退出分组</span>
                 </button>
             </div>
@@ -92,7 +94,7 @@
                     class="border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all resize-none"
                     placeholder="请输入消息内容..."></textarea>
                 <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <i class="fa fa-paper-plane"></i>
+                    <<i class="fa fa-paper-plane"></</i>
                     <span>发送消息</span>
                 </button>
             </div>
@@ -105,7 +107,7 @@
             </div>
             <div id="recordsContainer" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 content-auto">
                 <div id="emptyState" class="text-center py-12 text-secondary">
-                    <i class="fa fa-comment-o text-4xl mb-3 opacity-50"></i>
+                    <<i class="fa fa-comment-o text-4xl mb-3 opacity-50"></</i>
                     <p>暂无工作组记录，快来发送第一条消息吧！</p>
                 </div>
             </div>
@@ -113,6 +115,20 @@
     </div>
 
     <script>
+        // ========== 初始化腾讯云开发（已填入你的环境ID） ==========
+        const envId = "workgroup-chat-6gb3mguae5c384e1"; // 你的环境ID
+        // 初始化云开发
+        const app = cloudbase.init({
+            env: envId
+        });
+        // 登录（匿名登录，无需注册，直接用）
+        app.auth({
+            persistence: "local"
+        }).anonymousAuthProvider().signIn();
+        // 获取数据库引用
+        const db = app.database();
+        const workgroupsCollection = db.collection('workgroups');
+
         // ========== 核心变量 ==========
         const verifySection = document.getElementById('verifySection');
         const verifyCodeInput = document.getElementById('verifyCode');
@@ -131,198 +147,157 @@
 
         let currentVerifyCode = '';
         let isAdmin = false;
-        // 扩展分组数据：新增lastClearTime（最后清空时间，毫秒）
         let groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-
-        // 24小时毫秒数（86400秒 * 1000）
         const ONE_DAY_MS = 86400000;
+        let realtimeListener = null;
 
         // ========== 核心方法 ==========
-        // 验证验证码
-        const validateCode = (code) => /^\d{4}$/.test(code.trim());
-
-        // 获取分组数据（强制读取localStorage）
-        const getGroupData = (code) => {
-            const key = `workgroup_${code}`; // 更换为工作组存储键名
+        // 从云端获取分组数据
+        async function getGroupData(code) {
             try {
-                const data = localStorage.getItem(key);
-                // 兼容旧数据：如果没有lastClearTime，初始化当前时间
-                const parsedData = data ? JSON.parse(data) : { records: [], adminCreated: false, lastClearTime: Date.now() };
-                if (!parsedData.lastClearTime) parsedData.lastClearTime = Date.now();
-                return parsedData;
+                const res = await workgroupsCollection.doc(code).get();
+                return res.data || { records: [], adminCreated: false, lastClearTime: Date.now() };
             } catch (e) {
-                console.error('读取数据失败:', e);
+                console.error('读取云端数据失败:', e);
                 return { records: [], adminCreated: false, lastClearTime: Date.now() };
             }
-        };
+        }
 
-        // 保存分组数据（强制写入localStorage）
-        const saveGroupData = (code, data) => {
-            const key = `workgroup_${code}`;
+        // 保存分组数据到云端
+        async function saveGroupData(code, data) {
             try {
-                localStorage.setItem(key, JSON.stringify(data));
-                // 强制刷新localStorage（解决预览环境缓存问题）
-                localStorage.getItem(key);
+                await workgroupsCollection.doc(code).set(data);
             } catch (e) {
-                console.error('保存数据失败:', e);
+                console.error('保存云端数据失败:', e);
+                showToast('数据同步失败', 'error');
             }
-        };
+        }
 
-        // 检查是否需要24小时自动清空
-        const checkAutoClear = () => {
+        // 检查24小时自动清空
+        function checkAutoClear() {
             if (!currentVerifyCode || groupData.records.length === 0) return;
-
             const now = Date.now();
-            // 距离上次清空超过24小时，执行自动清空
             if (now - groupData.lastClearTime >= ONE_DAY_MS) {
-                // 强制清空数据
                 groupData.records = [];
-                groupData.lastClearTime = now; // 更新最后清空时间
+                groupData.lastClearTime = now;
                 saveGroupData(currentVerifyCode, groupData);
-                // 强制刷新UI
                 recordsContainer.innerHTML = '';
                 recordsContainer.appendChild(emptyState);
                 updateCount();
                 showToast('工作组记录已超过24小时，已自动清空', 'warning');
-                console.log('自动清空工作组记录：超过24小时未清空');
             }
-        };
+        }
 
         // 更新清空按钮状态
-        const updateClearBtn = () => {
+        function updateClearBtn() {
             if (!isAdmin) {
                 clearAllBtn.classList.add('hidden');
                 return;
             }
             clearAllBtn.classList.toggle('hidden', groupData.records.length === 0);
-        };
+        }
 
         // 更新计数和空状态
-        const updateCount = () => {
+        function updateCount() {
             recordCount.textContent = `${groupData.records.length} 条记录`;
             emptyState.style.display = groupData.records.length > 0 ? 'none' : 'block';
             updateClearBtn();
-        };
+        }
 
-        // 渲染记录（强制清空容器）
-        const renderRecords = () => {
-            // 第一步：强制清空容器所有内容
+        // 渲染记录
+        function renderRecords() {
             recordsContainer.innerHTML = '';
-            
-            // 第二步：如果无记录，直接显示空状态
             if (groupData.records.length === 0) {
                 recordsContainer.appendChild(emptyState);
                 updateCount();
                 return;
             }
-
-            // 第三步：渲染记录
             groupData.records.slice().reverse().forEach((record, index) => {
                 const item = document.createElement('div');
                 item.className = 'record-item';
                 item.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
-                        <span class="text-sm text-gray-500"><i class="fa fa-clock-o mr-1"></i>${record.time}</span>
+                        <span class="text-sm text-gray-500"><<i class="fa fa-clock-o mr-1"></</i>${record.time}</span>
                         <div class="flex items-center gap-2">
                             <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">#${groupData.records.length - index}</span>
-                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><i class="fa fa-times-circle"></i> 删除</span>` : ''}
+                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><<i class="fa fa-times-circle"></</i> 删除</span>` : ''}
                         </div>
                     </div>
                     <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
                 `;
                 recordsContainer.appendChild(item);
             });
-
             updateCount();
-        };
+        }
 
         // 删除单条记录
-        const deleteSingleRecord = (timestamp) => {
+        async function deleteSingleRecord(timestamp) {
             if (!isAdmin) return;
             groupData.records = groupData.records.filter(r => r.timestamp !== timestamp);
-            saveGroupData(currentVerifyCode, groupData);
+            await saveGroupData(currentVerifyCode, groupData);
             renderRecords();
             showToast('消息删除成功');
-        };
+        }
 
-        // 手动清空全部记录（管理员功能）
-        const clearAllRecords = () => {
-            // 1. 双重验证管理员权限
+        // 清空全部记录
+        async function clearAllRecords() {
             if (!isAdmin) {
                 showToast('非管理员无清空权限', 'error');
                 return;
             }
-            // 2. 验证是否有记录
             if (groupData.records.length === 0) {
                 showToast('暂无记录可清空', 'warning');
                 return;
             }
-            // 3. 二次确认
             if (!confirm('确定要清空全部工作组记录吗？此操作不可恢复！')) return;
-
-            // 4. 强制清空（核心修复）
-            groupData.records = []; // 清空内存数据
-            groupData.lastClearTime = Date.now(); // 更新最后清空时间
-            saveGroupData(currentVerifyCode, groupData); // 强制写入本地存储
-            groupData = getGroupData(currentVerifyCode); // 强制重新读取，确保同步
-            recordsContainer.innerHTML = ''; // 强制清空DOM
-            recordsContainer.appendChild(emptyState); // 强制显示空状态
-            updateCount(); // 强制更新计数
+            groupData.records = [];
+            groupData.lastClearTime = Date.now();
+            await saveGroupData(currentVerifyCode, groupData);
+            recordsContainer.innerHTML = '';
+            recordsContainer.appendChild(emptyState);
+            updateCount();
             showToast('全部工作组记录已清空');
-
-            // 5. 调试日志（方便排查）
-            console.log('手动清空后本地存储数据:', getGroupData(currentVerifyCode));
-        };
+        }
 
         // 提交消息
-        const submitMessage = () => {
+        async function submitMessage() {
             const content = contentInput.value.trim();
             if (!content) {
                 contentInput.classList.add('border-red-500');
                 setTimeout(() => contentInput.classList.remove('border-red-500'), 2000);
                 return;
             }
-
             const now = new Date();
             const newRecord = {
                 content,
                 time: now.toLocaleString('zh-CN'),
                 timestamp: now.getTime()
             };
-
             groupData.records.push(newRecord);
-            saveGroupData(currentVerifyCode, groupData);
+            await saveGroupData(currentVerifyCode, groupData);
             contentInput.value = '';
             renderRecords();
             submitBtn.classList.add('bg-green-600');
-            submitBtn.innerHTML = '<i class="fa fa-check"></i><span>发送成功</span>';
+            submitBtn.innerHTML = '<<i class="fa fa-check"></</i><span>发送成功</span>';
             setTimeout(() => {
                 submitBtn.classList.remove('bg-green-600');
-                submitBtn.innerHTML = '<i class="fa fa-paper-plane"></i><span>发送消息</span>';
+                submitBtn.innerHTML = '<<i class="fa fa-paper-plane"></</i><span>发送消息</span>';
             }, 1500);
             contentInput.focus();
-        };
+        }
 
         // 进入工作组
-        const enterWorkgroup = (code) => {
+        async function enterWorkgroup(code) {
             currentVerifyCode = code;
-            groupData = getGroupData(code);
+            groupData = await getGroupData(code);
             isAdmin = !groupData.adminCreated;
-
-            // 标记管理员已创建
             if (isAdmin) {
                 groupData.adminCreated = true;
-                saveGroupData(code, groupData);
+                await saveGroupData(code, groupData);
             }
-
-            // 先检查是否需要自动清空
             checkAutoClear();
-
-            // 存储会话状态
             sessionStorage.setItem('workgroup_code', code);
             sessionStorage.setItem('workgroup_admin', isAdmin);
-
-            // 更新UI
             verifySection.classList.add('hidden');
             mainSection.classList.remove('hidden');
             currentCodeEl.textContent = code;
@@ -330,10 +305,24 @@
             updateClearBtn();
             renderRecords();
             contentInput.focus();
-        };
+            // 实时监听数据变化
+            if (realtimeListener) realtimeListener.off();
+            realtimeListener = workgroupsCollection.doc(code).watch({
+                onChange: (snapshot) => {
+                    const newData = snapshot.docs[0]?.data() || { records: [], adminCreated: false, lastClearTime: Date.now() };
+                    groupData = newData;
+                    renderRecords();
+                },
+                onError: (e) => {
+                    console.error('实时监听失败:', e);
+                    showToast('实时同步失败，请刷新页面', 'error');
+                }
+            });
+        }
 
         // 退出工作组
-        const logoutWorkgroup = () => {
+        function logoutWorkgroup() {
+            if (realtimeListener) realtimeListener.off();
             sessionStorage.removeItem('workgroup_code');
             sessionStorage.removeItem('workgroup_admin');
             currentVerifyCode = '';
@@ -345,41 +334,27 @@
             verifyError.classList.add('hidden');
             adminTag.classList.add('hidden');
             clearAllBtn.classList.add('hidden');
-        };
+        }
 
         // 显示提示框
-        const showToast = (message, type = 'success') => {
+        function showToast(message, type = 'success') {
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-yellow-500';
             toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 fixed top-4 right-4 transition-all duration-500`;
-            toast.innerHTML = `<i class="fa fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></i>${message}`;
+            toast.innerHTML = `<<i class="fa fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></</i>${message}`;
             document.body.appendChild(toast);
             setTimeout(() => {
                 toast.classList.add('opacity-0');
                 setTimeout(() => document.body.removeChild(toast), 500);
             }, 2000);
-        };
-
-        // 定期刷新记录+检查自动清空
-        const refreshRecords = () => {
-            if (!currentVerifyCode) return;
-            // 先检查自动清空
-            checkAutoClear();
-            // 再同步最新数据
-            const latestData = getGroupData(currentVerifyCode);
-            if (JSON.stringify(latestData.records) !== JSON.stringify(groupData.records)) {
-                groupData.records = latestData.records;
-                groupData.lastClearTime = latestData.lastClearTime; // 同步最后清空时间
-                renderRecords();
-            }
-        };
+        }
 
         // ========== 事件监听 ==========
-        verifyBtn.addEventListener('click', () => {
+        verifyBtn.addEventListener('click', async () => {
             const code = verifyCodeInput.value.trim();
-            if (validateCode(code)) {
+            if (/^\d{4}$/.test(code)) {
                 verifyError.classList.add('hidden');
-                enterWorkgroup(code);
+                await enterWorkgroup(code);
             } else {
                 verifyError.classList.remove('hidden');
                 verifyCodeInput.classList.add('border-red-500');
@@ -398,23 +373,16 @@
             }
         });
 
-        // 自适应文本框高度
         contentInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = (Math.min(this.scrollHeight, 120)) + 'px';
         });
 
-        // 暴露删除函数到全局
         window.deleteSingleRecord = deleteSingleRecord;
 
-        // ========== 初始化 ==========
-        // 定期刷新+检查自动清空（1分钟一次，减少性能消耗）
-        setInterval(refreshRecords, 60000);
-
-        // 恢复会话状态
+        // 初始化恢复会话
         const savedCode = sessionStorage.getItem('workgroup_code');
-        const savedAdmin = sessionStorage.getItem('workgroup_admin') === 'true';
-        if (savedCode && validateCode(savedCode)) {
+        if (savedCode && /^\d{4}$/.test(savedCode)) {
             enterWorkgroup(savedCode);
         }
     </script>
