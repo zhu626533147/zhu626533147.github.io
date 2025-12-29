@@ -39,7 +39,7 @@
     <div id="verifySection" class="container mx-auto px-4 py-8">
         <div class="verify-container">
             <div class="text-center mb-6">
-                <<i class="fa fa-lock text-4xl text-primary mb-3"></</i>
+                <i class="fa fa-lock text-4xl text-primary mb-3"></i>
                 <h2 class="text-2xl font-bold text-gray-800">请输入四位验证码</h2>
                 <p class="text-secondary mt-2">相同验证码的用户共享记录<br>第一个输入者为管理员（可删除记录）</p>
             </div>
@@ -54,7 +54,7 @@
                     placeholder="1234">
                 <div id="verifyError" class="text-red-500 text-sm hidden text-center">请输入有效的四位数字验证码</div>
                 <button id="verifyBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <<i class="fa fa-unlock-alt"></</i>
+                    <i class="fa fa-unlock-alt"></i>
                     <span>验证并进入</span>
                 </button>
             </div>
@@ -69,17 +69,17 @@
                 <p class="text-secondary">
                     当前分组：<span id="currentCode" class="font-medium text-primary"></span>
                     <span id="adminTag" class="ml-2 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full hidden">
-                        <<i class="fa fa-shield mr-1"></</i>管理员
+                        <i class="fa fa-shield mr-1"></i>管理员
                     </span>
                 </p>
             </div>
             <div class="flex gap-3">
                 <button id="clearAllBtn" class="hidden bg-danger hover:bg-danger/90 text-white py-2 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-1 shadow-md hover:shadow-lg">
-                    <<i class="fa fa-trash"></</i>
+                    <i class="fa fa-trash"></i>
                     <span>清空全部</span>
                 </button>
                 <button id="logoutBtn" class="text-sm text-gray-600 hover:text-primary flex items-center gap-1">
-                    <<i class="fa fa-sign-out"></</i>
+                    <i class="fa fa-sign-out"></i>
                     <span>退出分组</span>
                 </button>
             </div>
@@ -94,7 +94,7 @@
                     class="border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all resize-none"
                     placeholder="请输入消息内容..."></textarea>
                 <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <<i class="fa fa-paper-plane"></</i>
+                    <i class="fa fa-paper-plane"></i>
                     <span>发送消息</span>
                 </button>
             </div>
@@ -107,7 +107,7 @@
             </div>
             <div id="recordsContainer" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 content-auto">
                 <div id="emptyState" class="text-center py-12 text-secondary">
-                    <<i class="fa fa-comment-o text-4xl mb-3 opacity-50"></</i>
+                    <i class="fa fa-comment-o text-4xl mb-3 opacity-50"></i>
                     <p>暂无工作组记录，快来发送第一条消息吧！</p>
                 </div>
             </div>
@@ -217,10 +217,10 @@
                 item.className = 'record-item';
                 item.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
-                        <span class="text-sm text-gray-500"><<i class="fa fa-clock-o mr-1"></</i>${record.time}</span>
+                        <span class="text-sm text-gray-500"><i class="fa fa-clock-o mr-1"></i>${record.time}</span>
                         <div class="flex items-center gap-2">
                             <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">#${groupData.records.length - index}</span>
-                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><<i class="fa fa-times-circle"></</i> 删除</span>` : ''}
+                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><i class="fa fa-times-circle"></i> 删除</span>` : ''}
                         </div>
                     </div>
                     <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
@@ -278,10 +278,10 @@
             contentInput.value = '';
             renderRecords();
             submitBtn.classList.add('bg-green-600');
-            submitBtn.innerHTML = '<<i class="fa fa-check"></</i><span>发送成功</span>';
+            submitBtn.innerHTML = '<i class="fa fa-check"></i><span>发送成功</span>';
             setTimeout(() => {
                 submitBtn.classList.remove('bg-green-600');
-                submitBtn.innerHTML = '<<i class="fa fa-paper-plane"></</i><span>发送消息</span>';
+                submitBtn.innerHTML = '<i class="fa fa-paper-plane"></i><span>发送消息</span>';
             }, 1500);
             contentInput.focus();
         }
@@ -341,7 +341,7 @@
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-yellow-500';
             toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 fixed top-4 right-4 transition-all duration-500`;
-            toast.innerHTML = `<<i class="fa fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></</i>${message}`;
+            toast.innerHTML = `<i class="fa fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></i>${message}`;
             document.body.appendChild(toast);
             setTimeout(() => {
                 toast.classList.add('opacity-0');
