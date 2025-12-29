@@ -3,13 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工作组 - 多设备同步</title>
-    <!-- 引入 Firebase 传统SDK（兼容全局代理，避免模块化语法问题） -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
-    <!-- Tailwind + Font Awesome（国内镜像，加载更快） -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/tailwindcss/3.4.1/tailwind.min.js"></script>
-    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <title>工作组 - 验证码验证</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
@@ -117,22 +113,6 @@
     </div>
 
     <script>
-        // ========== 1. 配置 Firebase（已替换为你的专属配置！） ==========
-        const firebaseConfig = {
-            apiKey: "AIzaSyC5S-1ijVvtf6tzeu9cht-56kSkHWXSbEY",
-            authDomain: "workgroup-chat.firebaseapp.com",
-            projectId: "workgroup-chat",
-            storageBucket: "workgroup-chat.firebasestorage.app",
-            messagingSenderId: "633683471332",
-            appId: "1:633683471332:web:1820e5efc25a687ede75f1",
-            databaseURL: "https://workgroup-chat-default-rtdb.asia-east1.firebasedatabase.app/" // 香港节点，国内访问更快
-        };
-
-        // 初始化 Firebase（传统方式，兼容全局代理）
-        firebase.initializeApp(firebaseConfig);
-        // 获取实时数据库引用（核心：云端同步）
-        const db = firebase.database();
-
         // ========== 核心变量 ==========
         const verifySection = document.getElementById('verifySection');
         const verifyCodeInput = document.getElementById('verifyCode');
@@ -151,74 +131,60 @@
 
         let currentVerifyCode = '';
         let isAdmin = false;
+        // 扩展分组数据：新增lastClearTime（最后清空时间，毫秒）
         let groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-        // 实时数据库监听引用（用于取消监听）
-        let recordsRef = null;
 
-        // 24小时毫秒数
+        // 24小时毫秒数（86400秒 * 1000）
         const ONE_DAY_MS = 86400000;
 
-        // ========== 核心方法（云端存储逻辑） ==========
+        // ========== 核心方法 ==========
         // 验证验证码
         const validateCode = (code) => /^\d{4}$/.test(code.trim());
 
-        // 从Firebase云端获取分组数据
-        const getGroupData = async (code) => {
-            const groupRef = db.ref(`workgroups/${code}`);
+        // 获取分组数据（强制读取localStorage）
+        const getGroupData = (code) => {
+            const key = `workgroup_${code}`; // 更换为工作组存储键名
             try {
-                const snapshot = await groupRef.once('value');
-                const data = snapshot.val() || { records: [], adminCreated: false, lastClearTime: Date.now() };
-                if (!data.lastClearTime) data.lastClearTime = Date.now();
-                return data;
+                const data = localStorage.getItem(key);
+                // 兼容旧数据：如果没有lastClearTime，初始化当前时间
+                const parsedData = data ? JSON.parse(data) : { records: [], adminCreated: false, lastClearTime: Date.now() };
+                if (!parsedData.lastClearTime) parsedData.lastClearTime = Date.now();
+                return parsedData;
             } catch (e) {
-                console.error('读取云端数据失败:', e);
+                console.error('读取数据失败:', e);
                 return { records: [], adminCreated: false, lastClearTime: Date.now() };
             }
         };
 
-        // 保存分组数据到Firebase云端
-        const saveGroupData = async (code, data) => {
-            const groupRef = db.ref(`workgroups/${code}`);
+        // 保存分组数据（强制写入localStorage）
+        const saveGroupData = (code, data) => {
+            const key = `workgroup_${code}`;
             try {
-                await groupRef.set(data);
-                console.log('数据已同步到云端');
+                localStorage.setItem(key, JSON.stringify(data));
+                // 强制刷新localStorage（解决预览环境缓存问题）
+                localStorage.getItem(key);
             } catch (e) {
-                console.error('保存云端数据失败:', e);
-                showToast('数据同步失败，请检查网络', 'error');
+                console.error('保存数据失败:', e);
             }
         };
 
-        // 监听云端数据变化（实时同步）
-        const listenToCloudRecords = (code) => {
-            // 先取消之前的监听（避免重复）
-            if (recordsRef) recordsRef.off();
-            // 监听云端分组数据变化
-            recordsRef = db.ref(`workgroups/${code}`);
-            recordsRef.on('value', async (snapshot) => {
-                const data = snapshot.val() || { records: [], adminCreated: false, lastClearTime: Date.now() };
-                if (!data.lastClearTime) data.lastClearTime = Date.now();
-                groupData = data;
-                // 检查自动清空
-                checkAutoClear();
-                // 渲染记录
-                renderRecords();
-                // 更新管理员状态
-                isAdmin = !groupData.adminCreated;
-                adminTag.classList.toggle('hidden', !isAdmin);
-                updateClearBtn();
-            });
-        };
-
-        // 检查24小时自动清空
+        // 检查是否需要24小时自动清空
         const checkAutoClear = () => {
             if (!currentVerifyCode || groupData.records.length === 0) return;
 
             const now = Date.now();
+            // 距离上次清空超过24小时，执行自动清空
             if (now - groupData.lastClearTime >= ONE_DAY_MS) {
+                // 强制清空数据
                 groupData.records = [];
-                groupData.lastClearTime = now;
+                groupData.lastClearTime = now; // 更新最后清空时间
                 saveGroupData(currentVerifyCode, groupData);
+                // 强制刷新UI
+                recordsContainer.innerHTML = '';
+                recordsContainer.appendChild(emptyState);
+                updateCount();
                 showToast('工作组记录已超过24小时，已自动清空', 'warning');
+                console.log('自动清空工作组记录：超过24小时未清空');
             }
         };
 
@@ -238,16 +204,19 @@
             updateClearBtn();
         };
 
-        // 渲染记录
+        // 渲染记录（强制清空容器）
         const renderRecords = () => {
+            // 第一步：强制清空容器所有内容
             recordsContainer.innerHTML = '';
             
+            // 第二步：如果无记录，直接显示空状态
             if (groupData.records.length === 0) {
                 recordsContainer.appendChild(emptyState);
                 updateCount();
                 return;
             }
 
+            // 第三步：渲染记录
             groupData.records.slice().reverse().forEach((record, index) => {
                 const item = document.createElement('div');
                 item.className = 'record-item';
@@ -267,34 +236,46 @@
             updateCount();
         };
 
-        // 删除单条记录（同步到云端）
-        const deleteSingleRecord = async (timestamp) => {
+        // 删除单条记录
+        const deleteSingleRecord = (timestamp) => {
             if (!isAdmin) return;
             groupData.records = groupData.records.filter(r => r.timestamp !== timestamp);
-            await saveGroupData(currentVerifyCode, groupData);
+            saveGroupData(currentVerifyCode, groupData);
+            renderRecords();
             showToast('消息删除成功');
         };
 
-        // 清空全部记录（同步到云端）
-        const clearAllRecords = async () => {
+        // 手动清空全部记录（管理员功能）
+        const clearAllRecords = () => {
+            // 1. 双重验证管理员权限
             if (!isAdmin) {
                 showToast('非管理员无清空权限', 'error');
                 return;
             }
+            // 2. 验证是否有记录
             if (groupData.records.length === 0) {
                 showToast('暂无记录可清空', 'warning');
                 return;
             }
+            // 3. 二次确认
             if (!confirm('确定要清空全部工作组记录吗？此操作不可恢复！')) return;
 
-            groupData.records = [];
-            groupData.lastClearTime = Date.now();
-            await saveGroupData(currentVerifyCode, groupData);
+            // 4. 强制清空（核心修复）
+            groupData.records = []; // 清空内存数据
+            groupData.lastClearTime = Date.now(); // 更新最后清空时间
+            saveGroupData(currentVerifyCode, groupData); // 强制写入本地存储
+            groupData = getGroupData(currentVerifyCode); // 强制重新读取，确保同步
+            recordsContainer.innerHTML = ''; // 强制清空DOM
+            recordsContainer.appendChild(emptyState); // 强制显示空状态
+            updateCount(); // 强制更新计数
             showToast('全部工作组记录已清空');
+
+            // 5. 调试日志（方便排查）
+            console.log('手动清空后本地存储数据:', getGroupData(currentVerifyCode));
         };
 
-        // 提交消息（同步到云端）
-        const submitMessage = async () => {
+        // 提交消息
+        const submitMessage = () => {
             const content = contentInput.value.trim();
             if (!content) {
                 contentInput.classList.add('border-red-500');
@@ -310,9 +291,9 @@
             };
 
             groupData.records.push(newRecord);
-            await saveGroupData(currentVerifyCode, groupData);
-            
+            saveGroupData(currentVerifyCode, groupData);
             contentInput.value = '';
+            renderRecords();
             submitBtn.classList.add('bg-green-600');
             submitBtn.innerHTML = '<i class="fa fa-check"></i><span>发送成功</span>';
             setTimeout(() => {
@@ -322,28 +303,24 @@
             contentInput.focus();
         };
 
-        // 进入工作组（绑定云端监听）
-        const enterWorkgroup = async (code) => {
+        // 进入工作组
+        const enterWorkgroup = (code) => {
             currentVerifyCode = code;
-            // 从云端获取最新数据
-            groupData = await getGroupData(code);
+            groupData = getGroupData(code);
             isAdmin = !groupData.adminCreated;
 
-            // 标记管理员已创建（同步到云端）
+            // 标记管理员已创建
             if (isAdmin) {
                 groupData.adminCreated = true;
-                await saveGroupData(code, groupData);
+                saveGroupData(code, groupData);
             }
 
-            // 检查自动清空
+            // 先检查是否需要自动清空
             checkAutoClear();
 
             // 存储会话状态
             sessionStorage.setItem('workgroup_code', code);
             sessionStorage.setItem('workgroup_admin', isAdmin);
-
-            // 监听云端数据变化（实时同步）
-            listenToCloudRecords(code);
 
             // 更新UI
             verifySection.classList.add('hidden');
@@ -355,18 +332,13 @@
             contentInput.focus();
         };
 
-        // 退出工作组（取消云端监听）
+        // 退出工作组
         const logoutWorkgroup = () => {
-            // 取消云端监听
-            if (recordsRef) recordsRef.off();
-            recordsRef = null;
-
             sessionStorage.removeItem('workgroup_code');
             sessionStorage.removeItem('workgroup_admin');
             currentVerifyCode = '';
             isAdmin = false;
             groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-            
             mainSection.classList.add('hidden');
             verifySection.classList.remove('hidden');
             verifyCodeInput.value = '';
@@ -388,12 +360,26 @@
             }, 2000);
         };
 
+        // 定期刷新记录+检查自动清空
+        const refreshRecords = () => {
+            if (!currentVerifyCode) return;
+            // 先检查自动清空
+            checkAutoClear();
+            // 再同步最新数据
+            const latestData = getGroupData(currentVerifyCode);
+            if (JSON.stringify(latestData.records) !== JSON.stringify(groupData.records)) {
+                groupData.records = latestData.records;
+                groupData.lastClearTime = latestData.lastClearTime; // 同步最后清空时间
+                renderRecords();
+            }
+        };
+
         // ========== 事件监听 ==========
-        verifyBtn.addEventListener('click', async () => {
+        verifyBtn.addEventListener('click', () => {
             const code = verifyCodeInput.value.trim();
             if (validateCode(code)) {
                 verifyError.classList.add('hidden');
-                await enterWorkgroup(code);
+                enterWorkgroup(code);
             } else {
                 verifyError.classList.remove('hidden');
                 verifyCodeInput.classList.add('border-red-500');
@@ -405,10 +391,10 @@
         logoutBtn.addEventListener('click', logoutWorkgroup);
         submitBtn.addEventListener('click', submitMessage);
         clearAllBtn.addEventListener('click', clearAllRecords);
-        contentInput.addEventListener('keydown', async (e) => {
+        contentInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                await submitMessage();
+                submitMessage();
             }
         });
 
@@ -422,6 +408,9 @@
         window.deleteSingleRecord = deleteSingleRecord;
 
         // ========== 初始化 ==========
+        // 定期刷新+检查自动清空（1分钟一次，减少性能消耗）
+        setInterval(refreshRecords, 60000);
+
         // 恢复会话状态
         const savedCode = sessionStorage.getItem('workgroup_code');
         const savedAdmin = sessionStorage.getItem('workgroup_admin') === 'true';
