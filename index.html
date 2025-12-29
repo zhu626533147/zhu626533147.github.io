@@ -3,388 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>工作组 - 验证码验证</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <!-- 引入腾讯云开发 SDK（国内CDN，无需科学上网） -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/cloudbase-js-sdk/1.7.0/cloudbase.full.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#3b82f6',
-                        secondary: '#64748b',
-                        danger: '#ef4444',
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                }
-            }
+    <title>工作组</title>
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
         }
-    </script>
-    <style type="text/tailwindcss">
-        @layer utilities {
-            .content-auto { content-visibility: auto; }
-            .record-item { @apply bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-3 transition-all hover:shadow-md; }
-            .input-container { @apply bg-white p-4 rounded-lg shadow-md border border-gray-200; }
-            .verify-container { @apply bg-white p-8 rounded-xl shadow-lg border border-gray-200 max-w-md mx-auto mt-20; }
-            .admin-btn { @apply transition-all hover:opacity-80 cursor-pointer; }
+
+        body {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        /* 标题样式 */
+        .title {
+            text-align: center;
+            font-size: 28px;
+            color: #333;
+            margin-bottom: 30px;
+            font-weight: bold;
+        }
+
+        /* 输入区域样式 */
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        #message-input:focus {
+            border-color: #1677ff;
+        }
+
+        #send-btn {
+            padding: 0 20px;
+            background-color: #1677ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #send-btn:hover {
+            background-color: #0f62d9;
+        }
+
+        /* 历史记录区域样式 */
+        .history-area {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .history-title {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        #history-list {
+            list-style: none;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            color: #333;
+            font-size: 15px;
+        }
+
+        .history-item:last-child {
+            border-bottom: none;
+        }
+
+        .item-time {
+            color: #999;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        /* 空状态样式 */
+        .empty-tip {
+            text-align: center;
+            color: #999;
+            padding: 30px 0;
+            font-size: 15px;
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans">
-    <!-- 验证码验证区域 -->
-    <div id="verifySection" class="container mx-auto px-4 py-8">
-        <div class="verify-container">
-            <div class="text-center mb-6">
-                <i class="fa fa-lock text-4xl text-primary mb-3"></i>
-                <h2 class="text-2xl font-bold text-gray-800">请输入四位验证码</h2>
-                <p class="text-secondary mt-2">相同验证码的用户共享记录<br>第一个输入者为管理员（可删除记录）</p>
-            </div>
-            <div class="flex flex-col gap-4">
-                <input 
-                    type="text" 
-                    id="verifyCode" 
-                    maxlength="4"
-                    inputmode="numeric"
-                    pattern="[0-9]{4}"
-                    class="border border-gray-300 rounded-lg p-4 text-center text-2xl font-medium focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all"
-                    placeholder="1234">
-                <div id="verifyError" class="text-red-500 text-sm hidden text-center">请输入有效的四位数字验证码</div>
-                <button id="verifyBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <i class="fa fa-unlock-alt"></i>
-                    <span>验证并进入</span>
-                </button>
-            </div>
-        </div>
+<body>
+    <h1 class="title">工作组</h1>
+
+    <!-- 输入区域 -->
+    <div class="input-area">
+        <input type="text" id="message-input" placeholder="请输入内容...">
+        <button id="send-btn">发送</button>
     </div>
 
-    <!-- 主内容区域 -->
-    <div id="mainSection" class="container mx-auto px-4 py-8 max-w-3xl hidden">
-        <header class="mb-6 flex flex-wrap justify-between items-center gap-4">
-            <div>
-                <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] text-gray-800 mb-2">工作组</h1>
-                <p class="text-secondary">
-                    当前分组：<span id="currentCode" class="font-medium text-primary"></span>
-                    <span id="adminTag" class="ml-2 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full hidden">
-                        <i class="fa fa-shield mr-1"></i>管理员
-                    </span>
-                </p>
-            </div>
-            <div class="flex gap-3">
-                <button id="clearAllBtn" class="hidden bg-danger hover:bg-danger/90 text-white py-2 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-1 shadow-md hover:shadow-lg">
-                    <i class="fa fa-trash"></i>
-                    <span>清空全部</span>
-                </button>
-                <button id="logoutBtn" class="text-sm text-gray-600 hover:text-primary flex items-center gap-1">
-                    <i class="fa fa-sign-out"></i>
-                    <span>退出分组</span>
-                </button>
-            </div>
-        </header>
-
-        <section class="input-container mb-8">
-            <div class="flex flex-col gap-4">
-                <label for="contentInput" class="text-gray-700 font-medium">输入内容：</label>
-                <textarea 
-                    id="contentInput" 
-                    rows="4" 
-                    class="border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none transition-all resize-none"
-                    placeholder="请输入消息内容..."></textarea>
-                <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-white py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
-                    <i class="fa fa-paper-plane"></i>
-                    <span>发送消息</span>
-                </button>
-            </div>
-        </section>
-
-        <section class="mb-8">
-            <div class="flex items-center justify-between mb-4">
-                <h2 class="text-xl font-semibold text-gray-800">工作组记录</h2>
-                <span id="recordCount" class="text-sm text-secondary">0 条记录</span>
-            </div>
-            <div id="recordsContainer" class="space-y-3 max-h-[60vh] overflow-y-auto pr-2 content-auto">
-                <div id="emptyState" class="text-center py-12 text-secondary">
-                    <i class="fa fa-comment-o text-4xl mb-3 opacity-50"></i>
-                    <p>暂无工作组记录，快来发送第一条消息吧！</p>
-                </div>
-            </div>
-        </section>
+    <!-- 历史记录区域 -->
+    <div class="history-area">
+        <div class="history-title">历史输入记录</div>
+        <ul id="history-list"></ul>
     </div>
 
+    <!-- 引入腾讯云开发SDK -->
+    <script src="https://web.sdk.qcloud.com/cloudbase/1.10.0/cloudbase.js"></script>
     <script>
-        // ========== 初始化腾讯云开发（已填入你的环境ID） ==========
-        const envId = "workgroup-chat-6gb3mguae5c384e1"; // 你的环境ID
-        // 初始化云开发
+        // 初始化云开发环境
         const app = cloudbase.init({
-            env: envId
+            env: "workgroup-chat-6gb3mguae5c384e1" // 你的腾讯云环境ID
         });
-        // 登录（匿名登录，无需注册，直接用）
-        app.auth({
-            persistence: "local"
-        }).anonymousAuthProvider().signIn();
+
         // 获取数据库引用
         const db = app.database();
-        const workgroupsCollection = db.collection('workgroups');
+        const collection = db.collection("workgroups");
 
-        // ========== 核心变量 ==========
-        const verifySection = document.getElementById('verifySection');
-        const verifyCodeInput = document.getElementById('verifyCode');
-        const verifyBtn = document.getElementById('verifyBtn');
-        const verifyError = document.getElementById('verifyError');
-        const mainSection = document.getElementById('mainSection');
-        const currentCodeEl = document.getElementById('currentCode');
-        const adminTag = document.getElementById('adminTag');
-        const clearAllBtn = document.getElementById('clearAllBtn');
-        const logoutBtn = document.getElementById('logoutBtn');
-        const contentInput = document.getElementById('contentInput');
-        const submitBtn = document.getElementById('submitBtn');
-        const recordsContainer = document.getElementById('recordsContainer');
-        const emptyState = document.getElementById('emptyState');
-        const recordCount = document.getElementById('recordCount');
+        // DOM元素获取
+        const messageInput = document.getElementById("message-input");
+        const sendBtn = document.getElementById("send-btn");
+        const historyList = document.getElementById("history-list");
 
-        let currentVerifyCode = '';
-        let isAdmin = false;
-        let groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-        const ONE_DAY_MS = 86400000;
-        let realtimeListener = null;
+        // 格式化时间：YYYY-MM-DD HH:MM:SS
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+        }
 
-        // ========== 核心方法 ==========
-        // 从云端获取分组数据
-        async function getGroupData(code) {
+        // 加载历史记录
+        async function loadHistory() {
             try {
-                const res = await workgroupsCollection.doc(code).get();
-                return res.data || { records: [], adminCreated: false, lastClearTime: Date.now() };
-            } catch (e) {
-                console.error('读取云端数据失败:', e);
-                return { records: [], adminCreated: false, lastClearTime: Date.now() };
-            }
-        }
+                // 查询数据库，按创建时间倒序排列（最新的在最上面）
+                const res = await collection.orderBy("createTime", "desc").get();
+                const messages = res.data;
+                
+                // 清空列表
+                historyList.innerHTML = "";
 
-        // 保存分组数据到云端
-        async function saveGroupData(code, data) {
-            try {
-                await workgroupsCollection.doc(code).set(data);
-            } catch (e) {
-                console.error('保存云端数据失败:', e);
-                showToast('数据同步失败', 'error');
-            }
-        }
-
-        // 检查24小时自动清空
-        function checkAutoClear() {
-            if (!currentVerifyCode || groupData.records.length === 0) return;
-            const now = Date.now();
-            if (now - groupData.lastClearTime >= ONE_DAY_MS) {
-                groupData.records = [];
-                groupData.lastClearTime = now;
-                saveGroupData(currentVerifyCode, groupData);
-                recordsContainer.innerHTML = '';
-                recordsContainer.appendChild(emptyState);
-                updateCount();
-                showToast('工作组记录已超过24小时，已自动清空', 'warning');
-            }
-        }
-
-        // 更新清空按钮状态
-        function updateClearBtn() {
-            if (!isAdmin) {
-                clearAllBtn.classList.add('hidden');
-                return;
-            }
-            clearAllBtn.classList.toggle('hidden', groupData.records.length === 0);
-        }
-
-        // 更新计数和空状态
-        function updateCount() {
-            recordCount.textContent = `${groupData.records.length} 条记录`;
-            emptyState.style.display = groupData.records.length > 0 ? 'none' : 'block';
-            updateClearBtn();
-        }
-
-        // 渲染记录
-        function renderRecords() {
-            recordsContainer.innerHTML = '';
-            if (groupData.records.length === 0) {
-                recordsContainer.appendChild(emptyState);
-                updateCount();
-                return;
-            }
-            groupData.records.slice().reverse().forEach((record, index) => {
-                const item = document.createElement('div');
-                item.className = 'record-item';
-                item.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-sm text-gray-500"><i class="fa fa-clock-o mr-1"></i>${record.time}</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">#${groupData.records.length - index}</span>
-                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><i class="fa fa-times-circle"></i> 删除</span>` : ''}
-                        </div>
-                    </div>
-                    <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
-                `;
-                recordsContainer.appendChild(item);
-            });
-            updateCount();
-        }
-
-        // 删除单条记录
-        async function deleteSingleRecord(timestamp) {
-            if (!isAdmin) return;
-            groupData.records = groupData.records.filter(r => r.timestamp !== timestamp);
-            await saveGroupData(currentVerifyCode, groupData);
-            renderRecords();
-            showToast('消息删除成功');
-        }
-
-        // 清空全部记录
-        async function clearAllRecords() {
-            if (!isAdmin) {
-                showToast('非管理员无清空权限', 'error');
-                return;
-            }
-            if (groupData.records.length === 0) {
-                showToast('暂无记录可清空', 'warning');
-                return;
-            }
-            if (!confirm('确定要清空全部工作组记录吗？此操作不可恢复！')) return;
-            groupData.records = [];
-            groupData.lastClearTime = Date.now();
-            await saveGroupData(currentVerifyCode, groupData);
-            recordsContainer.innerHTML = '';
-            recordsContainer.appendChild(emptyState);
-            updateCount();
-            showToast('全部工作组记录已清空');
-        }
-
-        // 提交消息
-        async function submitMessage() {
-            const content = contentInput.value.trim();
-            if (!content) {
-                contentInput.classList.add('border-red-500');
-                setTimeout(() => contentInput.classList.remove('border-red-500'), 2000);
-                return;
-            }
-            const now = new Date();
-            const newRecord = {
-                content,
-                time: now.toLocaleString('zh-CN'),
-                timestamp: now.getTime()
-            };
-            groupData.records.push(newRecord);
-            await saveGroupData(currentVerifyCode, groupData);
-            contentInput.value = '';
-            renderRecords();
-            submitBtn.classList.add('bg-green-600');
-            submitBtn.innerHTML = '<i class="fa fa-check"></i><span>发送成功</span>';
-            setTimeout(() => {
-                submitBtn.classList.remove('bg-green-600');
-                submitBtn.innerHTML = '<i class="fa fa-paper-plane"></i><span>发送消息</span>';
-            }, 1500);
-            contentInput.focus();
-        }
-
-        // 进入工作组
-        async function enterWorkgroup(code) {
-            currentVerifyCode = code;
-            groupData = await getGroupData(code);
-            isAdmin = !groupData.adminCreated;
-            if (isAdmin) {
-                groupData.adminCreated = true;
-                await saveGroupData(code, groupData);
-            }
-            checkAutoClear();
-            sessionStorage.setItem('workgroup_code', code);
-            sessionStorage.setItem('workgroup_admin', isAdmin);
-            verifySection.classList.add('hidden');
-            mainSection.classList.remove('hidden');
-            currentCodeEl.textContent = code;
-            adminTag.classList.toggle('hidden', !isAdmin);
-            updateClearBtn();
-            renderRecords();
-            contentInput.focus();
-            // 实时监听数据变化
-            if (realtimeListener) realtimeListener.off();
-            realtimeListener = workgroupsCollection.doc(code).watch({
-                onChange: (snapshot) => {
-                    const newData = snapshot.docs[0]?.data() || { records: [], adminCreated: false, lastClearTime: Date.now() };
-                    groupData = newData;
-                    renderRecords();
-                },
-                onError: (e) => {
-                    console.error('实时监听失败:', e);
-                    showToast('实时同步失败，请刷新页面', 'error');
+                // 无记录时显示提示
+                if (messages.length === 0) {
+                    historyList.innerHTML = `<li class="empty-tip">暂无输入记录</li>`;
+                    return;
                 }
-            });
-        }
 
-        // 退出工作组
-        function logoutWorkgroup() {
-            if (realtimeListener) realtimeListener.off();
-            sessionStorage.removeItem('workgroup_code');
-            sessionStorage.removeItem('workgroup_admin');
-            currentVerifyCode = '';
-            isAdmin = false;
-            groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-            mainSection.classList.add('hidden');
-            verifySection.classList.remove('hidden');
-            verifyCodeInput.value = '';
-            verifyError.classList.add('hidden');
-            adminTag.classList.add('hidden');
-            clearAllBtn.classList.add('hidden');
-        }
-
-        // 显示提示框
-        function showToast(message, type = 'success') {
-            const toast = document.createElement('div');
-            const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-yellow-500';
-            toast.className = `${bgColor} text-white px-4 py-2 rounded-lg shadow-lg z-50 fixed top-4 right-4 transition-all duration-500`;
-            toast.innerHTML = `<i class="fa fa-${type === 'success' ? 'check' : type === 'error' ? 'times' : 'exclamation'} mr-2"></i>${message}`;
-            document.body.appendChild(toast);
-            setTimeout(() => {
-                toast.classList.add('opacity-0');
-                setTimeout(() => document.body.removeChild(toast), 500);
-            }, 2000);
-        }
-
-        // ========== 事件监听 ==========
-        verifyBtn.addEventListener('click', async () => {
-            const code = verifyCodeInput.value.trim();
-            if (/^\d{4}$/.test(code)) {
-                verifyError.classList.add('hidden');
-                await enterWorkgroup(code);
-            } else {
-                verifyError.classList.remove('hidden');
-                verifyCodeInput.classList.add('border-red-500');
-                setTimeout(() => verifyCodeInput.classList.remove('border-red-500'), 2000);
+                // 渲染历史记录
+                messages.forEach(item => {
+                    const li = document.createElement("li");
+                    li.className = "history-item";
+                    li.innerHTML = `${item.content} <span class="item-time">${formatTime(item.createTime)}</span>`;
+                    historyList.appendChild(li);
+                });
+            } catch (err) {
+                console.error("加载历史记录失败：", err);
+                alert("加载历史记录失败，请刷新页面重试");
             }
-        });
-
-        verifyCodeInput.addEventListener('keydown', (e) => e.key === 'Enter' && verifyBtn.click());
-        logoutBtn.addEventListener('click', logoutWorkgroup);
-        submitBtn.addEventListener('click', submitMessage);
-        clearAllBtn.addEventListener('click', clearAllRecords);
-        contentInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submitMessage();
-            }
-        });
-
-        contentInput.addEventListener('input', function() {
-            this.style.height = 'auto';
-            this.style.height = (Math.min(this.scrollHeight, 120)) + 'px';
-        });
-
-        window.deleteSingleRecord = deleteSingleRecord;
-
-        // 初始化恢复会话
-        const savedCode = sessionStorage.getItem('workgroup_code');
-        if (savedCode && /^\d{4}$/.test(savedCode)) {
-            enterWorkgroup(savedCode);
         }
+
+        // 发送消息
+        async function sendMessage() {
+            const content = messageInput.value.trim();
+            if (!content) {
+                alert("请输入内容后再发送");
+                return;
+            }
+
+            try {
+                // 写入数据库
+                await collection.add({
+                    content: content,
+                    createTime: db.serverDate() // 使用服务器时间，避免客户端时间不一致
+                });
+
+                // 清空输入框
+                messageInput.value = "";
+
+                // 重新加载历史记录
+                loadHistory();
+            } catch (err) {
+                console.error("发送消息失败：", err);
+                alert("发送失败，请重试");
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.onload = async function() {
+            // 初始化云开发登录（匿名登录，无需账号）
+            try {
+                await app.auth().anonymousAuthProvider().signIn();
+                console.log("匿名登录成功");
+                // 加载历史记录
+                loadHistory();
+
+                // 监听发送按钮点击事件
+                sendBtn.addEventListener("click", sendMessage);
+
+                // 监听输入框回车事件
+                messageInput.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter") {
+                        sendMessage();
+                    }
+                });
+
+                // 实时监听数据库变化（可选：实现无刷新更新）
+                collection.watch({
+                    onChange: () => {
+                        loadHistory(); // 数据变化时重新加载
+                    },
+                    onError: (err) => {
+                        console.error("实时监听失败：", err);
+                    }
+                });
+            } catch (err) {
+                console.error("初始化失败：", err);
+                alert("网站初始化失败，请检查网络或腾讯云环境配置");
+            }
+        };
     </script>
 </body>
 </html>
