@@ -288,6 +288,7 @@
                 subscription.unsubscribe();
             }
 
+            console.log('开始订阅实时消息，验证码:', code);
             subscription = supabaseClient
                 .channel(`messages:${code}`)
                 .on('postgres_changes', {
@@ -296,9 +297,17 @@
                     table: 'messages',
                     filter: `group_code=eq.${code}`
                 }, async (payload) => {
+                    console.log('收到实时更新:', payload);
                     await refreshRecords();
                 })
-                .subscribe();
+                .subscribe((status) => {
+                    console.log('订阅状态:', status);
+                    if (status === 'SUBSCRIBED') {
+                        console.log('实时订阅成功！');
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.error('实时订阅失败！');
+                    }
+                });
         };
 
         const unsubscribeFromMessages = () => {
@@ -313,7 +322,7 @@
 
             const now = Date.now();
             if (now - groupData.lastClearTime >= ONE_DAY_MS) {
-                if (supabase) {
+                if (supabaseClient) {
                     await clearAllMessages(currentVerifyCode);
                 } else {
                     groupData.records = [];
