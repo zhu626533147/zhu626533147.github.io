@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>工作组 - 验证码验证</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <!-- 引入腾讯云开发SDK -->
-    <script src="https://web.sdk.qcloud.com/cloudbase/1.10.0/cloudbase.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -115,35 +115,16 @@
     </div>
 
     <script>
-        // ========== 腾讯云开发初始化 ==========
-        let app, db, workgroupsCollection;
-        
+        // ========== 初始化 Supabase ==========
+        let supabaseClient = null;
+        let subscription = null;
+
         try {
-            // 检查cloudbase对象是否存在
-            if (typeof cloudbase === 'undefined') {
-                throw new Error('腾讯云开发SDK未加载成功');
+            if (typeof SUPABASE_CONFIG !== 'undefined' && SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) {
+                supabaseClient = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
             }
-            
-            app = cloudbase.init({
-                env: "workgroup-chat-6gb3mguae5c384e1" // 替换为你的环境ID
-            });
-            
-            console.log('云开发SDK初始化成功');
-            
-            // 匿名登录（无需用户注册，直接访问数据库）
-            app.auth({ persistence: "local" }).anonymousAuthProvider().signIn().then(() => {
-                console.log("云开发匿名登录成功");
-                // 登录成功后初始化数据库
-                db = app.database();
-                workgroupsCollection = db.collection("workgroups"); // 集合名称
-                console.log('数据库连接成功');
-            }).catch(err => {
-                console.error("云开发登录失败：", err);
-                alert("云数据库登录失败，请检查网络连接并刷新页面重试。错误：" + (err.message || JSON.stringify(err)));
-            });
-        } catch (err) {
-            console.error("云开发初始化失败：", err);
-            alert("云开发SDK初始化失败，请检查网络连接或稍后重试。错误：" + (err.message || JSON.stringify(err)));
+        } catch (e) {
+            console.error('Supabase 初始化失败:', e);
         }
 
         // ========== 核心变量 ==========
@@ -165,74 +146,180 @@
         let currentVerifyCode = '';
         let isAdmin = false;
         let groupData = { records: [], adminCreated: false, lastClearTime: Date.now() };
-        const ONE_DAY_MS = 86400000; // 24小时毫秒数
+        let userId = '';
+        const ONE_DAY_MS = 86400000;
 
-        // ========== 核心方法（替换为云数据库操作） ==========
-        // 验证验证码
+        // ========== 核心方法 ==========
         const validateCode = (code) => /^\d{4}$/.test(code.trim());
 
-        // 获取分组数据（从云数据库读取）
+        const generateUserId = () => {
+            let id = localStorage.getItem('workgroup_user_id');
+            if (!id) {
+                id = crypto.randomUUID();
+                localStorage.setItem('workgroup_user_id', id);
+            }
+            return id;
+        };
+
         const getGroupData = async (code) => {
+            if (!supabaseClient) {
+                const key = `workgroup_${code}`;
+                try {
+                    const data = localStorage.getItem(key);
+                    const parsedData = data ? JSON.parse(data) : { records: [], adminCreated: false, lastClearTime: Date.now() };
+                    if (!parsedData.lastClearTime) parsedData.lastClearTime = Date.now();
+                    return parsedData;
+                } catch (e) {
+                    console.error('读取数据失败:', e);
+                    return { records: [], adminCreated: false, lastClearTime: Date.now() };
+                }
+            }
+
             try {
-                // 检查数据库是否初始化
-                if (!workgroupsCollection) {
-                    throw new Error('数据库未初始化，请确保云开发SDK加载成功');
-                }
-                
-                // 查询验证码对应的分组
-                const res = await workgroupsCollection.where({ code: code }).get();
-                console.log('获取分组数据成功:', res.data);
-                
-                if (res.data.length === 0) {
-                    // 无数据则返回默认值
-                    return { records: [], adminCreated: false, lastClearTime: Date.now(), code: code };
-                }
-                // 有数据则返回，兼容lastClearTime字段
-                const group = res.data[0];
-                if (!group.lastClearTime) group.lastClearTime = Date.now();
-                return group;
+                const { data: group } = await supabaseClient
+                    .from('groups')
+                    .select('*')
+                    .eq('code', code)
+                    .single();
+
+                const { data: messages } = await supabaseClient
+                    .from('messages')
+                    .select('*')
+                    .eq('group_code', code)
+                    .order('created_at', { ascending: true });
+
+                const records = messages ? messages.map(msg => ({
+                    content: msg.content,
+                    time: new Date(msg.created_at).toLocaleString('zh-CN'),
+                    timestamp: new Date(msg.created_at).getTime(),
+                    id: msg.id,
+                    user_id: msg.user_id
+                })) : [];
+
+                return {
+                    records,
+                    adminCreated: !!group,
+                    lastClearTime: group ? new Date(group.last_clear_time).getTime() : Date.now()
+                };
             } catch (e) {
-                console.error('读取云数据失败:', e);
-                alert('读取数据库失败：' + (e.message || JSON.stringify(e)));
-                return { records: [], adminCreated: false, lastClearTime: Date.now(), code: code };
+                console.error('获取数据失败:', e);
+                return { records: [], adminCreated: false, lastClearTime: Date.now() };
             }
         };
 
-        // 保存分组数据（写入云数据库）
         const saveGroupData = async (code, data) => {
-            try {
-                // 检查数据库是否初始化
-                if (!workgroupsCollection) {
-                    throw new Error('数据库未初始化，请确保云开发SDK加载成功');
+            if (!supabaseClient) {
+                const key = `workgroup_${code}`;
+                try {
+                    localStorage.setItem(key, JSON.stringify(data));
+                    localStorage.getItem(key);
+                } catch (e) {
+                    console.error('保存数据失败:', e);
                 }
-                
-                // 先查是否存在该分组
-                const res = await workgroupsCollection.where({ code: code }).get();
-                
-                if (res.data.length === 0) {
-                    // 新增分组
-                    await workgroupsCollection.add(data);
-                    console.log('新增分组成功:', data);
-                } else {
-                    // 更新已有分组
-                    await workgroupsCollection.doc(res.data[0]._id).update(data);
-                    console.log('更新分组成功:', data);
+                return;
+            }
+
+            try {
+                if (!data.adminCreated) {
+                    await supabaseClient
+                        .from('groups')
+                        .insert({
+                            code,
+                            admin_id: userId,
+                            last_clear_time: new Date(data.lastClearTime).toISOString()
+                        });
                 }
             } catch (e) {
-                console.error('保存云数据失败:', e);
-                alert("消息保存失败，请重试。错误：" + (e.message || JSON.stringify(e)));
+                console.error('保存数据失败:', e);
             }
         };
 
-        // 检查是否需要24小时自动清空
+        const saveMessage = async (code, content) => {
+            if (!supabaseClient) return;
+
+            try {
+                await supabaseClient
+                    .from('messages')
+                    .insert({
+                        group_code: code,
+                        content,
+                        user_id: userId
+                    });
+            } catch (e) {
+                console.error('保存消息失败:', e);
+            }
+        };
+
+        const deleteMessage = async (id) => {
+            if (!supabaseClient) return;
+
+            try {
+                await supabaseClient
+                    .from('messages')
+                    .delete()
+                    .eq('id', id);
+            } catch (e) {
+                console.error('删除消息失败:', e);
+            }
+        };
+
+        const clearAllMessages = async (code) => {
+            if (!supabaseClient) return;
+
+            try {
+                await supabaseClient
+                    .from('messages')
+                    .delete()
+                    .eq('group_code', code);
+
+                await supabaseClient
+                    .from('groups')
+                    .update({ last_clear_time: new Date().toISOString() })
+                    .eq('code', code);
+            } catch (e) {
+                console.error('清空消息失败:', e);
+            }
+        };
+
+        const subscribeToMessages = (code) => {
+            if (!supabaseClient) return;
+
+            if (subscription) {
+                subscription.unsubscribe();
+            }
+
+            subscription = supabaseClient
+                .channel(`messages:${code}`)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'messages',
+                    filter: `group_code=eq.${code}`
+                }, async (payload) => {
+                    await refreshRecords();
+                })
+                .subscribe();
+        };
+
+        const unsubscribeFromMessages = () => {
+            if (subscription) {
+                subscription.unsubscribe();
+                subscription = null;
+            }
+        };
+
         const checkAutoClear = async () => {
             if (!currentVerifyCode || groupData.records.length === 0) return;
 
             const now = Date.now();
             if (now - groupData.lastClearTime >= ONE_DAY_MS) {
-                groupData.records = [];
-                groupData.lastClearTime = now;
-                await saveGroupData(currentVerifyCode, groupData);
+                if (supabase) {
+                    await clearAllMessages(currentVerifyCode);
+                } else {
+                    groupData.records = [];
+                    groupData.lastClearTime = now;
+                    await saveGroupData(currentVerifyCode, groupData);
+                }
                 recordsContainer.innerHTML = '';
                 recordsContainer.appendChild(emptyState);
                 updateCount();
@@ -241,7 +328,6 @@
             }
         };
 
-        // 更新清空按钮状态
         const updateClearBtn = () => {
             if (!isAdmin) {
                 clearAllBtn.classList.add('hidden');
@@ -250,16 +336,15 @@
             clearAllBtn.classList.toggle('hidden', groupData.records.length === 0);
         };
 
-        // 更新计数和空状态
         const updateCount = () => {
             recordCount.textContent = `${groupData.records.length} 条记录`;
             emptyState.style.display = groupData.records.length > 0 ? 'none' : 'block';
             updateClearBtn();
         };
 
-        // 渲染记录
         const renderRecords = () => {
             recordsContainer.innerHTML = '';
+            
             if (groupData.records.length === 0) {
                 recordsContainer.appendChild(emptyState);
                 updateCount();
@@ -274,7 +359,7 @@
                         <span class="text-sm text-gray-500"><i class="fa fa-clock-o mr-1"></i>${record.time}</span>
                         <div class="flex items-center gap-2">
                             <span class="text-xs bg-gray-100 px-2 py-1 rounded-full">#${groupData.records.length - index}</span>
-                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord(${record.timestamp})"><i class="fa fa-times-circle"></i> 删除</span>` : ''}
+                            ${isAdmin ? `<span class="admin-btn text-danger text-xs" onclick="deleteSingleRecord('${record.id || record.timestamp}')"><i class="fa fa-times-circle"></i> 删除</span>` : ''}
                         </div>
                     </div>
                     <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
@@ -285,16 +370,19 @@
             updateCount();
         };
 
-        // 删除单条记录
-        const deleteSingleRecord = async (timestamp) => {
+        const deleteSingleRecord = async (id) => {
             if (!isAdmin) return;
-            groupData.records = groupData.records.filter(r => r.timestamp !== timestamp);
-            await saveGroupData(currentVerifyCode, groupData);
-            renderRecords();
+
+            if (supabaseClient) {
+                await deleteMessage(id);
+            } else {
+                groupData.records = groupData.records.filter(r => r.timestamp !== id);
+                await saveGroupData(currentVerifyCode, groupData);
+            }
+            await refreshRecords();
             showToast('消息删除成功');
         };
 
-        // 手动清空全部记录
         const clearAllRecords = async () => {
             if (!isAdmin) {
                 showToast('非管理员无清空权限', 'error');
@@ -306,18 +394,21 @@
             }
             if (!confirm('确定要清空全部工作组记录吗？此操作不可恢复！')) return;
 
-            groupData.records = [];
-            groupData.lastClearTime = Date.now();
-            await saveGroupData(currentVerifyCode, groupData);
-            groupData = await getGroupData(currentVerifyCode);
+            if (supabaseClient) {
+                await clearAllMessages(currentVerifyCode);
+            } else {
+                groupData.records = [];
+                groupData.lastClearTime = Date.now();
+                await saveGroupData(currentVerifyCode, groupData);
+                groupData = await getGroupData(currentVerifyCode);
+            }
             recordsContainer.innerHTML = '';
             recordsContainer.appendChild(emptyState);
             updateCount();
             showToast('全部工作组记录已清空');
-            console.log('手动清空后云数据:', await getGroupData(currentVerifyCode));
+            console.log('手动清空后数据:', groupData);
         };
 
-        // 提交消息
         const submitMessage = async () => {
             const content = contentInput.value.trim();
             if (!content) {
@@ -326,17 +417,20 @@
                 return;
             }
 
-            const now = new Date();
-            const newRecord = {
-                content,
-                time: now.toLocaleString('zh-CN'),
-                timestamp: now.getTime()
-            };
-
-            groupData.records.push(newRecord);
-            await saveGroupData(currentVerifyCode, groupData);
+            if (supabaseClient) {
+                await saveMessage(currentVerifyCode, content);
+            } else {
+                const now = new Date();
+                const newRecord = {
+                    content,
+                    time: now.toLocaleString('zh-CN'),
+                    timestamp: now.getTime()
+                };
+                groupData.records.push(newRecord);
+                await saveGroupData(currentVerifyCode, groupData);
+            }
             contentInput.value = '';
-            renderRecords();
+            await refreshRecords();
             submitBtn.classList.add('bg-green-600');
             submitBtn.innerHTML = '<i class="fa fa-check"></i><span>发送成功</span>';
             setTimeout(() => {
@@ -346,26 +440,26 @@
             contentInput.focus();
         };
 
-        // 进入工作组
         const enterWorkgroup = async (code) => {
             currentVerifyCode = code;
+            userId = generateUserId();
             groupData = await getGroupData(code);
             isAdmin = !groupData.adminCreated;
 
-            // 标记管理员已创建
             if (isAdmin) {
                 groupData.adminCreated = true;
                 await saveGroupData(code, groupData);
             }
 
-            // 检查自动清空
             await checkAutoClear();
 
-            // 存储会话状态
             sessionStorage.setItem('workgroup_code', code);
             sessionStorage.setItem('workgroup_admin', isAdmin);
 
-            // 更新UI
+            if (supabaseClient) {
+                subscribeToMessages(code);
+            }
+
             verifySection.classList.add('hidden');
             mainSection.classList.remove('hidden');
             currentCodeEl.textContent = code;
@@ -375,8 +469,8 @@
             contentInput.focus();
         };
 
-        // 退出工作组
         const logoutWorkgroup = () => {
+            unsubscribeFromMessages();
             sessionStorage.removeItem('workgroup_code');
             sessionStorage.removeItem('workgroup_admin');
             currentVerifyCode = '';
@@ -390,7 +484,6 @@
             clearAllBtn.classList.add('hidden');
         };
 
-        // 显示提示框
         const showToast = (message, type = 'success') => {
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-yellow-500';
@@ -403,37 +496,23 @@
             }, 2000);
         };
 
-        // 定期刷新记录+检查自动清空
         const refreshRecords = async () => {
             if (!currentVerifyCode) return;
-            
-            try {
-                await checkAutoClear();
-                
-                // 检查数据库是否初始化
-                if (!workgroupsCollection) {
-                    console.warn('数据库未初始化，跳过刷新记录');
-                    return;
-                }
-                
-                const latestData = await getGroupData(currentVerifyCode);
-                if (JSON.stringify(latestData.records) !== JSON.stringify(groupData.records)) {
-                    groupData.records = latestData.records;
-                    groupData.lastClearTime = latestData.lastClearTime;
-                    renderRecords();
-                    console.log('记录刷新成功，当前记录数:', groupData.records.length);
-                }
-            } catch (e) {
-                console.error('刷新记录失败:', e);
+            await checkAutoClear();
+            const latestData = await getGroupData(currentVerifyCode);
+            if (JSON.stringify(latestData.records) !== JSON.stringify(groupData.records)) {
+                groupData.records = latestData.records;
+                groupData.lastClearTime = latestData.lastClearTime;
+                renderRecords();
             }
         };
 
         // ========== 事件监听 ==========
-        verifyBtn.addEventListener('click', async () => {
+        verifyBtn.addEventListener('click', () => {
             const code = verifyCodeInput.value.trim();
             if (validateCode(code)) {
                 verifyError.classList.add('hidden');
-                await enterWorkgroup(code);
+                enterWorkgroup(code);
             } else {
                 verifyError.classList.remove('hidden');
                 verifyCodeInput.classList.add('border-red-500');
@@ -452,28 +531,23 @@
             }
         });
 
-        // 自适应文本框高度
         contentInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = (Math.min(this.scrollHeight, 120)) + 'px';
         });
 
-        // 暴露删除函数到全局
         window.deleteSingleRecord = deleteSingleRecord;
 
         // ========== 初始化 ==========
-        // 定期刷新（1分钟一次）
-        setInterval(refreshRecords, 60000);
+        if (!supabaseClient) {
+            setInterval(refreshRecords, 60000);
+        }
 
-        // 恢复会话状态 - 延迟执行，确保数据库初始化完成
-        setTimeout(() => {
-            const savedCode = sessionStorage.getItem('workgroup_code');
-            const savedAdmin = sessionStorage.getItem('workgroup_admin') === 'true';
-            if (savedCode && validateCode(savedCode)) {
-                console.log('恢复会话状态，验证码:', savedCode, '是否管理员:', savedAdmin);
-                enterWorkgroup(savedCode);
-            }
-        }, 1000); // 延迟1秒执行，确保云开发SDK初始化完成
+        const savedCode = sessionStorage.getItem('workgroup_code');
+        const savedAdmin = sessionStorage.getItem('workgroup_admin') === 'true';
+        if (savedCode && validateCode(savedCode)) {
+            enterWorkgroup(savedCode);
+        }
     </script>
 </body>
 </html>
