@@ -41,7 +41,7 @@
             <div class="text-center mb-6">
                 <i class="fa fa-lock text-4xl text-primary mb-3"></i>
                 <h2 class="text-2xl font-bold text-gray-800">请输入四位验证码</h2>
-                <p class="text-secondary mt-2">相同验证码的用户共享记录<br>第一个输入者为管理员（可删除记录）</p>
+                <p class="text-secondary mt-2">相同验证码的用户共享记录</p>
             </div>
             <div class="flex flex-col gap-4">
                 <input 
@@ -199,6 +199,7 @@
                 return {
                     records,
                     adminCreated: !!group,
+                    adminId: group ? group.admin_id : null,
                     lastClearTime: group ? new Date(group.last_clear_time).getTime() : Date.now()
                 };
             } catch (e) {
@@ -453,9 +454,9 @@
             currentVerifyCode = code;
             userId = generateUserId();
             groupData = await getGroupData(code);
-            isAdmin = !groupData.adminCreated;
+            isAdmin = !groupData.adminCreated || groupData.adminId === userId;
 
-            if (isAdmin) {
+            if (isAdmin && !groupData.adminCreated) {
                 groupData.adminCreated = true;
                 await saveGroupData(code, groupData);
             }
